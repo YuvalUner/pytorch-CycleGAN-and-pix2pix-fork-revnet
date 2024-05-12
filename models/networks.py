@@ -160,7 +160,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == "revnet":
-        net = RevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
+        net = RevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=50)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -661,25 +661,38 @@ class RevnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
 
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), activation]
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
         if use_dropout:
             conv_block += [nn.Dropout(0.5)]
+
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
 
         return nn.Sequential(*conv_block)
 
     def forward(self, x):
-        # Split the input into two, x1 and x2, along the channel dimension
-        x1, x2 = torch.chunk(x, 2, dim=1)
+        # Split the input into two, x1 and x2, along the height dimension.
+        # In the paper, they use the channel dimension, but using channels in this case, where there are 3
+        # channels, causes a mismatch in the dimension of the tensors in the reverse pass, making it impossible.
+        x1, x2 = torch.chunk(x, 2, dim=2)
         y1 = x1 + self.f_func_conv_block(x2)
         y2 = x2 + self.g_func_conv_block(y1)
-        return torch.cat([y1, y2], dim=1)
+        return torch.cat([y1, y2], dim=2)
 
     def reverse(self, y):
-        # Split the input into two, y1 and y2, along the channel dimension
-        y1, y2 = torch.chunk(y, 2, dim=1)
+        # Split the input into two, y1 and y2, along the height dimension
+        y1, y2 = torch.chunk(y, 2, dim=2)
         x2 = y2 - self.g_func_conv_block(y1)
         x1 = y1 - self.f_func_conv_block(x2)
-        return torch.cat([x1, x2], dim=1)
+        return torch.cat([x1, x2], dim=2)
 
 
 class RevnetGenerator(nn.Module):
@@ -708,16 +721,13 @@ class RevnetGenerator(nn.Module):
                     RevnetBlock(input_nc, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
                                 use_bias=use_bias, activation=nn.ReLU(True))]
 
-        self.model = model
+        self.model = nn.Sequential(*model)
 
     def forward(self, input):
-        output = input
-        for block in self.model:
-            output = block(output)
-        return output
+        return self.model(input)
 
     def reverse(self, input):
         output = input
-        for block in reversed(self.model):
-            output = block.reverse(output)
+        for step in list(self.model.children())[::-1]:
+            output = step.reverse(output)
         return output

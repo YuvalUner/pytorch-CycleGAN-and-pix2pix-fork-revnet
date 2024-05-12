@@ -94,6 +94,7 @@ class RevnetGanModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B = self.netG_A(self.real_A)  # G_A(A) - forward direction
+        self.fake_A = self.netG_A.module.reverse(self.fake_B) # G_A(B) - reverse direction
         return self.fake_B
 
     def reverse(self):
