@@ -53,15 +53,15 @@ class RevnetGanModel(BaseModel):
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
         if self.isTrain:
-            self.model_names = ['G_A', 'D_A']
+            self.model_names = ['G', 'D_A']
         else:  # during test time, only load Gs
-            self.model_names = ['G_A']
+            self.model_names = ['G']
 
         # define networks (both Generators and discriminators)
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
-        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
+                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.n_blocks)
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
@@ -73,7 +73,7 @@ class RevnetGanModel(BaseModel):
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
@@ -93,12 +93,11 @@ class RevnetGanModel(BaseModel):
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.netG_A(self.real_A)  # G_A(A) - forward direction
-        self.fake_A = self.netG_A.module.reverse(self.fake_B) # G_A(B) - reverse direction
-        return self.fake_B
+        self.fake_B = self.netG(self.real_A)  # G_A(A) - forward direction
+        self.fake_A = self.netG.module.reverse(self.fake_B) # G_A(B) - reverse direction
 
     def reverse(self):
-        self.fake_A = self.netG_A.reverse(self.fake_B) # G_A(B) - reverse direction
+        self.fake_A = self.netG.reverse(self.fake_B) # G_A(B) - reverse direction
         return self.fake_A
 
     def backward_D_basic(self, netD, real, fake):

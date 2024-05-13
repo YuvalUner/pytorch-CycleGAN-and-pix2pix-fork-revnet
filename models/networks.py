@@ -121,7 +121,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
 
 
 def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02,
-             gpu_ids=[]):
+             gpu_ids=[], n_blocks=9):
     """Create a generator
 
     Parameters:
@@ -160,7 +160,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == "revnet":
-        net = RevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=50)
+        net = RevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=n_blocks)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -633,12 +633,12 @@ class PixelDiscriminator(nn.Module):
 
 class RevnetBlock(nn.Module):
 
-    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias, activation):
+    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
         super(RevnetBlock, self).__init__()
-        self.f_func_conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias, activation)
-        self.g_func_conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias, activation)
+        self.f_func_conv_block = self.build_conv_block(dim // 2, padding_type, norm_layer, use_dropout, use_bias)
+        self.g_func_conv_block = self.build_conv_block(dim // 2, padding_type, norm_layer, use_dropout, use_bias)
 
-    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias, activation):
+    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias):
         """Construct a convolutional block.
 
         Parameters:
@@ -679,20 +679,18 @@ class RevnetBlock(nn.Module):
         return nn.Sequential(*conv_block)
 
     def forward(self, x):
-        # Split the input into two, x1 and x2, along the height dimension.
-        # In the paper, they use the channel dimension, but using channels in this case, where there are 3
-        # channels, causes a mismatch in the dimension of the tensors in the reverse pass, making it impossible.
-        x1, x2 = torch.chunk(x, 2, dim=2)
+        # Split the input into two, x1 and x2, along the channel dimension.
+        x1, x2 = torch.chunk(x, 2, dim=1)
         y1 = x1 + self.f_func_conv_block(x2)
         y2 = x2 + self.g_func_conv_block(y1)
-        return torch.cat([y1, y2], dim=2)
+        return torch.cat([y1, y2], dim=1)
 
     def reverse(self, y):
-        # Split the input into two, y1 and y2, along the height dimension
-        y1, y2 = torch.chunk(y, 2, dim=2)
+        # Split the input into two, y1 and y2, along the channel dimension
+        y1, y2 = torch.chunk(y, 2, dim=1)
         x2 = y2 - self.g_func_conv_block(y1)
         x1 = y1 - self.f_func_conv_block(x2)
-        return torch.cat([x1, x2], dim=2)
+        return torch.cat([x1, x2], dim=1)
 
 
 class RevnetGenerator(nn.Module):
@@ -711,23 +709,36 @@ class RevnetGenerator(nn.Module):
 
         model = []
 
-        for i in range(n_blocks):
-            if i == 0 or i == n_blocks - 1:
-                model += [
-                    RevnetBlock(input_nc, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
-                                use_bias=use_bias, activation=nn.Tanh())]
-            else:
-                model += [
-                    RevnetBlock(input_nc, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
-                                use_bias=use_bias, activation=nn.ReLU(True))]
+        # Use a 1x1 convolution to increase the number of channels to ngf
+        self.initial_conv = nn.Conv2d(input_nc, ngf, kernel_size=1, padding=0, bias=use_bias)
+        model += [self.initial_conv]
+
+        self.revnet_blocks = []
+
+        for i in range(n_blocks):  # add RevNet blocks
+            self.revnet_blocks += [RevnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
+                                  use_bias=use_bias)]
+            model += [self.revnet_blocks[i]]
+
+        # Use a 1x1 convolution to decrease the number of channels to output_nc
+        self.final_conv = nn.Conv2d(ngf, output_nc, kernel_size=1, padding=0, bias=use_bias)
+        model += [self.final_conv]
+
+        # Use a tanh activation function to ensure the output is between -1 and 1
+        self.tanh = nn.Tanh()
 
         self.model = nn.Sequential(*model)
 
     def forward(self, input):
-        return self.model(input)
+        x = self.initial_conv(input)
+        for revnet_block in self.revnet_blocks:
+            x = revnet_block(x)
+        x = self.final_conv(x)
+        return self.tanh(x)
 
     def reverse(self, input):
-        output = input
-        for step in list(self.model.children())[::-1]:
-            output = step.reverse(output)
-        return output
+        x = self.initial_conv(input)
+        for revnet_block in reversed(self.revnet_blocks):
+            x = revnet_block.reverse(x)
+        x = self.final_conv(x)
+        return self.tanh(x)
