@@ -49,8 +49,8 @@ class RevnetBiGanModel(BaseModel):
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_AtoB', 'D_B', 'G_BtoA']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
-        visual_names_A = ['real_A', 'fake_B']
-        visual_names_B = ['real_B', 'fake_A']
+        visual_names_A = ['real_A', 'fake_B', 'rec_A']
+        visual_names_B = ['real_B', 'fake_A', 'rec_B']
 
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
@@ -76,6 +76,7 @@ class RevnetBiGanModel(BaseModel):
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
+            self.criterionIdt = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
             self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -138,17 +139,11 @@ class RevnetBiGanModel(BaseModel):
 
         # GAN loss D_A(G_A(A))
         self.loss_G_AtoB = self.criterionGAN(self.netD_A(self.fake_B), True)
-        self.loss_G_AtoB.backward()
-        self.optimizer_G.step()
-        self.optimizer_G.zero_grad()
         # GAN loss D_B(G_B(B))
         self.loss_G_BtoA = self.criterionGAN(self.netD_B(self.fake_A), True)
-        self.loss_G_BtoA.backward()
-        self.optimizer_G.step()
-        # Forward cycle loss || G_B(G_A(A)) - A||
         # combined loss and calculate gradients
-        # self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
-        # self.loss_G.backward()
+        self.loss_G = self.loss_G_AtoB + self.loss_G_BtoA
+        self.loss_G.backward()
 
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
@@ -158,7 +153,7 @@ class RevnetBiGanModel(BaseModel):
         self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
         self.backward_G()             # calculate gradients for G_A and G_B
-        self.optimizer_G.step()       # update G_A and G_B's weights
+        # self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
         self.set_requires_grad([self.netD_A, self.netD_B], True)
         self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero

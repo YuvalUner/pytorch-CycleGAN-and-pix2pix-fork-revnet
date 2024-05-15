@@ -61,7 +61,8 @@ class RevnetGanModel(BaseModel):
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.n_blocks)
+                                      not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.n_blocks,
+                                      split_dim=opt.split_dim)
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
@@ -93,8 +94,8 @@ class RevnetGanModel(BaseModel):
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.fake_B = self.netG(self.real_A)  # G_A(A) - forward direction
-        self.fake_A = self.netG.module.reverse(self.fake_B) # G_A(B) - reverse direction
+        self.fake_B = self.netG.module.AtoB(self.real_A)  # G_A(A) - forward direction
+        self.fake_A = self.netG.module.BtoA(self.fake_B) # G_A(B) - reverse direction
 
     def reverse(self):
         self.fake_A = self.netG.reverse(self.fake_B) # G_A(B) - reverse direction

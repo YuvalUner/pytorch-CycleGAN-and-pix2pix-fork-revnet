@@ -58,6 +58,7 @@ class BaseOptions():
         parser.add_argument('--use_wandb', action='store_true', help='if specified, then init wandb logging')
         parser.add_argument('--wandb_project_name', type=str, default='CycleGAN-and-pix2pix', help='specify wandb project name')
         parser.add_argument('--n_blocks', type=int, default=9, help='number of revnet blocks in the revnet generator')
+        parser.add_argument('--split_dim', type=str, default='channel', help='which dimension to split the input tensor by. [channel | height | width]')
         self.initialized = True
         return parser
 
