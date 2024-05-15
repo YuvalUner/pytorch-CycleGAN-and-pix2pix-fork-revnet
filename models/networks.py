@@ -742,3 +742,60 @@ class RevnetGenerator(nn.Module):
             x = revnet_block.reverse(x)
         x = self.final_conv(x)
         return self.tanh(x)
+
+
+class RevnetBiDirectionalGenerator(nn.Module):
+
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=9,
+                 padding_type='reflect'):
+        """
+        Construct a Revnet-based generator
+        """
+        assert (n_blocks >= 0)
+        super(RevnetBiDirectionalGenerator, self).__init__()
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = []
+
+        # Use a 1x1 convolution to increase the number of channels to ngf
+        self.initial_conv_AtoB = nn.Conv2d(input_nc, ngf, kernel_size=1, padding=0, bias=use_bias)
+        model += [self.initial_conv_AtoB]
+
+        self.initial_conv_BtoA = nn.Conv2d(input_nc, ngf, kernel_size=1, padding=0, bias=use_bias)
+        model += [self.initial_conv_BtoA]
+
+        self.revnet_blocks = []
+
+        for i in range(n_blocks):  # add RevNet blocks
+            self.revnet_blocks += [RevnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
+                                  use_bias=use_bias)]
+            model += [self.revnet_blocks[i]]
+
+        # Use a 1x1 convolution to decrease the number of channels to output_nc
+        self.final_conv_AtoB = nn.Conv2d(ngf, output_nc, kernel_size=1, padding=0, bias=use_bias)
+        model += [self.final_conv_AtoB]
+
+        self.final_conv_BtoA = nn.Conv2d(ngf, output_nc, kernel_size=1, padding=0, bias=use_bias)
+        model += [self.final_conv_BtoA]
+
+        # Use a tanh activation function to ensure the output is between -1 and 1
+        self.tanh = nn.Tanh()
+
+        self.model = nn.Sequential(*model)
+
+    def AtoB(self, input):
+        x = self.initial_conv_AtoB(input)
+        for revnet_block in self.revnet_blocks:
+            x = revnet_block(x)
+        x = self.final_conv_AtoB(x)
+        return self.tanh(x)
+
+    def BtoA(self, input):
+        x = self.initial_conv_BtoA(input)
+        for revnet_block in reversed(self.revnet_blocks):
+            x = revnet_block.reverse(x)
+        x = self.final_conv_BtoA(x)
+        return self.tanh(x)
