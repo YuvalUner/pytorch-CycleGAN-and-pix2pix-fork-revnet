@@ -121,7 +121,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
 
 
 def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02,
-             gpu_ids=[], n_blocks=9, split_dim='channel'):
+             gpu_ids=[], n_blocks=9, split_dim='channel', kernel_size=1):
     """Create a generator
 
     Parameters:
@@ -160,11 +160,14 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == "revnet":
-        net = RevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=n_blocks)
+        net = RevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,
+                              n_blocks=n_blocks, kernel_size=kernel_size)
     elif netG == "revnet_bi":
-        net = RevnetBiDirectionalGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=n_blocks)
+        net = RevnetBiDirectionalGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,
+                                           n_blocks=n_blocks, kernel_size=kernel_size)
     elif netG == "revnet_pure":
-        net = PureRevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=n_blocks, split_dim=split_dim)
+        net = PureRevnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout,
+                                  n_blocks=n_blocks, split_dim=split_dim)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -643,8 +646,10 @@ class RevnetBlock(nn.Module):
         if not different_dims and split_dim == "channel":
             f_block_dim = dim // 2
             g_block_dim = dim // 2
-        self.f_func_conv_block = self.build_conv_block(f_block_dim, padding_type, norm_layer, use_dropout, use_bias, split_dim)
-        self.g_func_conv_block = self.build_conv_block(g_block_dim, padding_type, norm_layer, use_dropout, use_bias, split_dim)
+        self.f_func_conv_block = self.build_conv_block(f_block_dim, padding_type, norm_layer, use_dropout, use_bias,
+                                                       split_dim)
+        self.g_func_conv_block = self.build_conv_block(g_block_dim, padding_type, norm_layer, use_dropout, use_bias,
+                                                       split_dim)
 
     def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias, split_dim):
         """Construct a convolutional block.
@@ -694,7 +699,7 @@ class RevnetBlock(nn.Module):
         # Split the input into two, x1 and x2, along the channel dimension, unless specified otherwise
         x1, x2 = torch.chunk(x, 2, dim=self.split_dim)
 
-        y1 = x1 + self.f_func_conv_block(x2) # f(x2) -
+        y1 = x1 + self.f_func_conv_block(x2)  # f(x2) -
         y2 = x2 + self.g_func_conv_block(y1)
 
         return torch.cat([y1, y2], dim=self.split_dim)
@@ -712,7 +717,7 @@ class RevnetBlock(nn.Module):
 class RevnetGenerator(nn.Module):
 
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=9,
-                 padding_type='reflect'):
+                 padding_type='reflect', kernel_size=1):
         """
         Construct a Revnet-based generator
         """
@@ -726,18 +731,19 @@ class RevnetGenerator(nn.Module):
         model = []
 
         # Use a 1x1 convolution to increase the number of channels to ngf
-        self.initial_conv = nn.Conv2d(input_nc, ngf, kernel_size=1, padding=0, bias=use_bias)
+        self.initial_conv = nn.Conv2d(input_nc, ngf, kernel_size=kernel_size, padding=0, bias=use_bias)
         model += [self.initial_conv]
 
         self.revnet_blocks = []
 
         for i in range(n_blocks):  # add RevNet blocks
-            self.revnet_blocks += [RevnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
-                                  use_bias=use_bias)]
+            self.revnet_blocks += [
+                RevnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
+                            use_bias=use_bias)]
             model += [self.revnet_blocks[i]]
 
         # Use a 1x1 convolution to decrease the number of channels to output_nc
-        self.final_conv = nn.Conv2d(ngf, output_nc, kernel_size=1, padding=0, bias=use_bias)
+        self.final_conv = nn.Conv2d(ngf, output_nc, kernel_size=kernel_size, padding=0, bias=use_bias)
         model += [self.final_conv]
 
         # Use a tanh activation function to ensure the output is between -1 and 1
@@ -763,7 +769,7 @@ class RevnetGenerator(nn.Module):
 class RevnetBiDirectionalGenerator(nn.Module):
 
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=9,
-                 padding_type='reflect'):
+                 padding_type='reflect', kernel_size=1):
         """
         Construct a Revnet-based generator
         """
@@ -777,24 +783,25 @@ class RevnetBiDirectionalGenerator(nn.Module):
         model = []
 
         # Use a 3x3 convolution to increase the number of channels to ngf
-        self.initial_conv_AtoB = nn.Conv2d(input_nc, ngf, kernel_size=1, padding=0, bias=use_bias)
+        self.initial_conv_AtoB = nn.Conv2d(input_nc, ngf, kernel_size=kernel_size, padding=0, bias=use_bias)
         model += [self.initial_conv_AtoB]
 
-        self.initial_conv_BtoA = nn.Conv2d(input_nc, ngf, kernel_size=1, padding=0, bias=use_bias)
+        self.initial_conv_BtoA = nn.Conv2d(input_nc, ngf, kernel_size=kernel_size, padding=0, bias=use_bias)
         model += [self.initial_conv_BtoA]
 
         self.revnet_blocks = []
 
         for i in range(n_blocks):  # add RevNet blocks
-            self.revnet_blocks += [RevnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
-                                  use_bias=use_bias)]
+            self.revnet_blocks += [
+                RevnetBlock(ngf, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
+                            use_bias=use_bias)]
             model += [self.revnet_blocks[i]]
 
         # Use a 3x3 convolution to decrease the number of channels to output_nc
-        self.final_conv_AtoB = nn.Conv2d(ngf, output_nc, kernel_size=1, padding=0, bias=use_bias)
+        self.final_conv_AtoB = nn.Conv2d(ngf, output_nc, kernel_size=kernel_size, padding=0, bias=use_bias)
         model += [self.final_conv_AtoB]
 
-        self.final_conv_BtoA = nn.Conv2d(ngf, output_nc, kernel_size=1, padding=0, bias=use_bias)
+        self.final_conv_BtoA = nn.Conv2d(ngf, output_nc, kernel_size=kernel_size, padding=0, bias=use_bias)
         model += [self.final_conv_BtoA]
 
         # Use a tanh activation function to ensure the output is between -1 and 1
@@ -815,6 +822,7 @@ class RevnetBiDirectionalGenerator(nn.Module):
             x = revnet_block.reverse(x)
         x = self.final_conv_BtoA(x)
         return self.tanh(x)
+
 
 class PureRevnetGenerator(nn.Module):
 
@@ -842,9 +850,10 @@ class PureRevnetGenerator(nn.Module):
         self.revnet_blocks = []
 
         for i in range(n_blocks):  # add RevNet blocks
-            self.revnet_blocks += [RevnetBlock(input_nc, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
-                                  use_bias=use_bias, split_dim=split_dim, different_dims=True,
-                                               f_block_dim=f_block_dim, g_block_dim=g_block_dim)]
+            self.revnet_blocks += [
+                RevnetBlock(input_nc, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout,
+                            use_bias=use_bias, split_dim=split_dim, different_dims=True,
+                            f_block_dim=f_block_dim, g_block_dim=g_block_dim)]
             model += [self.revnet_blocks[i]]
 
         # Use a tanh activation function to ensure the output is between -1 and 1

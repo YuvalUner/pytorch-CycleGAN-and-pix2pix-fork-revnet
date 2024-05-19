@@ -62,7 +62,7 @@ class RevnetGanModel(BaseModel):
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, opt.n_blocks,
-                                      split_dim=opt.split_dim)
+                                      split_dim=opt.split_dim, kernel_size=opt.revnet_G_kernel_size)
 
         if self.isTrain:  # define discriminators
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf, opt.netD,
@@ -74,8 +74,10 @@ class RevnetGanModel(BaseModel):
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG.parameters()), lr=opt.lr,
+                                                betas=(opt.beta1, 0.999))
+            self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters()), lr=opt.lr,
+                                                betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -95,10 +97,10 @@ class RevnetGanModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B = self.netG.module.AtoB(self.real_A)  # G_A(A) - forward direction
-        self.fake_A = self.netG.module.BtoA(self.fake_B) # G_A(B) - reverse direction
+        self.fake_A = self.netG.module.BtoA(self.fake_B)  # G_A(B) - reverse direction
 
     def reverse(self):
-        self.fake_A = self.netG.reverse(self.fake_B) # G_A(B) - reverse direction
+        self.fake_A = self.netG.reverse(self.fake_B)  # G_A(B) - reverse direction
         return self.fake_A
 
     def backward_D_basic(self, netD, real, fake):
@@ -145,14 +147,14 @@ class RevnetGanModel(BaseModel):
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
-        self.forward()      # compute fake images and reconstruction images.
+        self.forward()  # compute fake images and reconstruction images.
         # G_A and G_B
         self.set_requires_grad([self.netD_A], False)  # Ds require no gradients when optimizing Gs
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
-        self.backward_G()             # calculate gradients for G_A and G_B
-        self.optimizer_G.step()       # update G_A and G_B's weights
+        self.backward_G()  # calculate gradients for G_A and G_B
+        self.optimizer_G.step()  # update G_A and G_B's weights
         # D_A and D_B
         self.set_requires_grad([self.netD_A], True)
-        self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero
-        self.backward_D_A()      # calculate gradients for D_A
+        self.optimizer_D.zero_grad()  # set D_A and D_B's gradients to zero
+        self.backward_D_A()  # calculate gradients for D_A
         self.optimizer_D.step()  # update D_A and D_B's weights
