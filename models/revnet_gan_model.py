@@ -34,7 +34,9 @@ class RevnetGanModel(BaseModel):
         Dropout is not used in the original CycleGAN paper.
         """
         parser.set_defaults(no_dropout=True)  # default CycleGAN did not use dropout
-
+        if is_train:
+            parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
+            parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
         return parser
 
     def __init__(self, opt):
@@ -49,6 +51,10 @@ class RevnetGanModel(BaseModel):
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B']
         visual_names_B = ['real_B', 'fake_A']
+
+        if opt.revnet_use_reconstruction:
+            visual_names_A.append('rec_A')
+            self.loss_names.append('rec_A')
 
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
@@ -73,6 +79,8 @@ class RevnetGanModel(BaseModel):
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
+            if opt.revnet_use_reconstruction:
+                self.criterionCycle = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG.parameters()), lr=opt.lr,
                                                 betas=(opt.beta1, 0.999))
@@ -98,6 +106,8 @@ class RevnetGanModel(BaseModel):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B = self.netG.module.AtoB(self.real_A)  # G_A(A) - forward direction
         self.fake_A = self.netG.module.BtoA(self.fake_B)  # G_A(B) - reverse direction
+        if self.opt.revnet_use_reconstruction:
+            self.rec_A = self.netG.module.BtoA(self.fake_B)
 
     def reverse(self):
         self.fake_A = self.netG.reverse(self.fake_B)  # G_A(B) - reverse direction
@@ -139,9 +149,12 @@ class RevnetGanModel(BaseModel):
         """Calculate the loss for generators G_A and G_B"""
         # GAN loss D_A(G_A(A))
         self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
-        # GAN loss D_B(G_B(B))
-        # combined loss and calculate gradients
-        self.loss_G = self.loss_G_A
+        if self.opt.revnet_use_reconstruction:
+            self.loss_rec_A = self.criterionCycle(self.rec_A, self.real_A) * self.opt.lambda_A
+            # combined loss and calculate gradients
+            self.loss_G = self.loss_G_A + self.loss_rec_A
+        else:
+            self.loss_G = self.loss_G_A
         self.loss_G.backward()
 
     def optimize_parameters(self):

@@ -38,6 +38,10 @@ class RevnetBiGanModel(BaseModel):
         Dropout is not used in the original CycleGAN paper.
         """
         parser.set_defaults(no_dropout=True)  # default CycleGAN did not use dropout
+        if is_train:
+            parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
+            parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
+            parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
         return parser
 
     def __init__(self, opt):
@@ -50,8 +54,13 @@ class RevnetBiGanModel(BaseModel):
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_AtoB', 'D_B', 'G_BtoA']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
-        visual_names_A = ['real_A', 'fake_B', 'rec_A']
-        visual_names_B = ['real_B', 'fake_A', 'rec_B']
+        visual_names_A = ['real_A', 'fake_B']
+        visual_names_B = ['real_B', 'fake_A']
+
+        if opt.revnet_use_reconstruction:
+            visual_names_A += ['rec_A']
+            visual_names_B += ['rec_B']
+            self.loss_names += ['rec_A', 'rec_B']
 
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
@@ -79,7 +88,7 @@ class RevnetBiGanModel(BaseModel):
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
-            self.criterionIdt = torch.nn.L1Loss()
+            self.criterionCycle = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG.parameters()), lr=opt.lr,
                                                 betas=(opt.beta1, 0.999))
@@ -105,6 +114,9 @@ class RevnetBiGanModel(BaseModel):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B = self.netG.module.AtoB(self.real_A)  # G_A(A)
         self.fake_A = self.netG.module.BtoA(self.real_B)  # G_B(B)
+        if self.opt.revnet_use_reconstruction:
+            self.rec_A = self.netG.module.BtoA(self.fake_B)
+            self.rec_B = self.netG.module.AtoB(self.fake_A)
 
     def backward_D_basic(self, netD, real, fake):
         """Calculate GAN loss for the discriminator
@@ -146,8 +158,16 @@ class RevnetBiGanModel(BaseModel):
         self.loss_G_AtoB = self.criterionGAN(self.netD_A(self.fake_B), True)
         # GAN loss D_B(G_B(B))
         self.loss_G_BtoA = self.criterionGAN(self.netD_B(self.fake_A), True)
-        # combined loss and calculate gradients
-        self.loss_G = self.loss_G_AtoB + self.loss_G_BtoA
+
+        if self.opt.revnet_use_reconstruction:
+            # Reconstruction loss
+            self.loss_rec_A = self.criterionCycle(self.rec_A, self.real_A) * self.opt.lambda_A
+            self.loss_rec_B = self.criterionCycle(self.rec_B, self.real_B) * self.opt.lambda_B
+            self.loss_G = self.loss_G_AtoB + self.loss_G_BtoA + self.loss_rec_A + self.loss_rec_B
+        else:
+            # combined loss and calculate gradients
+            self.loss_G = self.loss_G_AtoB + self.loss_G_BtoA
+
         self.loss_G.backward()
 
     def optimize_parameters(self):

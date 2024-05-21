@@ -82,6 +82,8 @@ class BaseOptions():
                             help='which dimension to split the input tensor by. [channel | height | width]')
         parser.add_argument('--revnet_G_kernel_size', type=int, default=1,
                             help='kernel size of the initial and final layers of the revnet generator')
+        parser.add_argument('--revnet_use_reconstruction', type=bool, default=False, help='whether to use reconstruction loss'
+                                                                                          'or not in the revnet model.')
         self.initialized = True
         return parser
 
