@@ -28,7 +28,8 @@ class BaseOptions():
         parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
         # model parameters
         parser.add_argument('--model', type=str, default='cycle_gan',
-                            help='chooses which model to use. [cycle_gan | pix2pix | test | colorization]')
+                            help='chooses which model to use. [cycle_gan | pix2pix | test | colorization | revnet_gan |'
+                                 ' revnet_reconstruction | revnet_bi_gan]')
         parser.add_argument('--input_nc', type=int, default=3,
                             help='# of input image channels: 3 for RGB and 1 for grayscale')
         parser.add_argument('--output_nc', type=int, default=3,
