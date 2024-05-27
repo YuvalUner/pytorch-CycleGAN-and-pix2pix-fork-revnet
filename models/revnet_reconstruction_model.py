@@ -95,9 +95,9 @@ class RevnetReconstructionModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B = self.netG.module.AtoB(self.real_A)  # G(A) - forward direction
-        self.fake_A = self.netG.module.BtoA(self.fake_B)  # G^{-1}(B) - reverse direction
-        self.rec_A = self.netG.module.BtoA(self.real_B)  # G(G^{-1}(B))
-        self.rec_B = self.netG.module.AtoB(self.real_A)  # G^{-1}(G(A))
+        self.fake_A = self.netG.module.BtoA(self.real_B)  # G^{-1}(B) - reverse direction
+        self.rec_A = self.netG.module.BtoA(self.fake_B)  # G(G^{-1}(B))
+        self.rec_B = self.netG.module.AtoB(self.fake_A)  # G^{-1}(G(A))
 
 
     def backward_G(self):
