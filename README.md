@@ -8,6 +8,15 @@ Given their reversible nature, it was hypothesized that RevNets may be able to r
 \
 Using the code in this repository, and testing on the horse2zebra dataset under the constraint of 70 epochs and similar training and inference time for both models, it was found that the RevNet generator was not able to achieve the same level of performance as the 2 generator architecture of the CycleGAN model.\
 \
+Changed files (code added to original files):
+* models/networks.py
+* options/base_options.py
+
+Added files:
+* models/revnet_gan_model.py
+* models/revnet_bi_gan_model.py
+* RevnetGAN.ipynb
+\
 \
 \
 \
