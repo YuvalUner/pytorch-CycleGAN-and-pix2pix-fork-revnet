@@ -16,7 +16,7 @@ Added files:
 * models/revnet_gan_model.py
 * models/revnet_bi_gan_model.py
 * RevnetGAN.ipynb
-\
+
 \
 \
 \
