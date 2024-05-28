@@ -17,11 +17,7 @@ Added files:
 * models/revnet_bi_gan_model.py
 * RevnetGAN.ipynb
 
-\
-\
-\
 Original README follows:\
-\
 <img src='imgs/horse2zebra.gif' align="right" width=384>
 
 <br><br><br>
