@@ -1,3 +1,17 @@
+# About this fork
+This fork is a modified version of the original repository, made for the purpose of comparing the performance of the CycleGAN model
+to the performance of RevNet based generative models, on the task of image-to-image translation. The original repository can be found [here](https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix). All rights to the original code belong to the original authors.\
+\
+RevNet, a Reversible Residual Network, is a concept introduced in the paper [Gomez, Aidan N., et al. "The reversible residual network: Backpropagation without storing activations." Advances in neural information processing systems 30 (2017).](https://arxiv.org/abs/1707.04585).\
+\
+Given their reversible nature, it was hypothesized that RevNets may be able to replace the 2 generator architecture of the CycleGAN model, and still achieve similar results. This fork aims to provide a basis for testing this hypothesis.\
+\
+Using the code in this repository, and testing on the horse2zebra dataset under the constraint of 70 epochs and similar training and inference time for both models, it was found that the RevNet generator was not able to achieve the same level of performance as the 2 generator architecture of the CycleGAN model.\
+\
+\
+\
+\
+Original README follows:
 
 <img src='imgs/horse2zebra.gif' align="right" width=384>
 
