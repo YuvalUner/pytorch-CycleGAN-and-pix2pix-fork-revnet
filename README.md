@@ -12,7 +12,7 @@ Changed files (code added to original files):
 * models/networks.py
 * options/base_options.py
 
-Added files:
+Added (new) files:
 * models/revnet_gan_model.py
 * models/revnet_bi_gan_model.py
 * RevnetGAN.ipynb
