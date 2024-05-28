@@ -11,8 +11,8 @@ Using the code in this repository, and testing on the horse2zebra dataset under 
 \
 \
 \
-Original README follows:
-
+Original README follows:\
+\
 <img src='imgs/horse2zebra.gif' align="right" width=384>
 
 <br><br><br>
